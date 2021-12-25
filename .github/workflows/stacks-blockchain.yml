@@ -16,85 +16,49 @@ on:
         required: false
 
 jobs:
-  # Notify Slack channel of workflow start
-  notify-start:
-    runs-on: ubuntu-latest
-    # Only run on non-PR events or only PRs that aren't from forks
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    outputs:
-      slack_message_id: ${{ steps.slack.outputs.message_id }}
-    steps:
-      - name: Notify slack start
-        id: slack
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-        uses: voxmedia/github-action-slack-notify-build@v1.1.2
-        with:
-          channel: devops-notify
-          status: STARTING
-          color: warning
+  # open-api-validation:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - name: Run units tests (with coverage)
+  #       env:
+  #         DOCKER_BUILDKIT: 1
+  #       run: docker build -o dist/ -f .github/actions/open-api/Dockerfile.open-api-validate .
+  #     - name: Upload bundled html
+  #       uses: actions/upload-artifact@v2
+  #       with:
+  #         name: open-api-bundle
+  #         path: |
+  #           dist
+  # # Run net-tests
+  # nettest:
+  #   # disable this job/test for now, since we haven't seen this pass
+  #   #  on github actions in a while, and the failures can take > 4 hours
+  #   if: ${{ false }}
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - name: Run network relay tests
+  #       env:
+  #         DOCKER_BUILDKIT: 1
+  #       run: docker build -f ./.github/actions/bitcoin-int-tests/Dockerfile.net-tests .
 
-  # Run full genesis test
-  full-genesis:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Single full genesis integration test
-        env:
-          DOCKER_BUILDKIT: 1
-        # Remove .dockerignore file so codecov has access to git info
-        run: |
-          rm .dockerignore
-          docker build -o coverage-output -f ./.github/actions/bitcoin-int-tests/Dockerfile.large-genesis .
-      - uses: codecov/codecov-action@v2
-        with:
-          files: ./coverage-output/lcov.info
-          name: large_genesis
-          fail_ci_if_error: true
-
-  open-api-validation:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Run units tests (with coverage)
-        env:
-          DOCKER_BUILDKIT: 1
-        run: docker build -o dist/ -f .github/actions/open-api/Dockerfile.open-api-validate .
-      - name: Upload bundled html
-        uses: actions/upload-artifact@v2
-        with:
-          name: open-api-bundle
-          path: |
-            dist
-  # Run net-tests
-  nettest:
-    # disable this job/test for now, since we haven't seen this pass
-    #  on github actions in a while, and the failures can take > 4 hours
-    if: ${{ false }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Run network relay tests
-        env:
-          DOCKER_BUILDKIT: 1
-        run: docker build -f ./.github/actions/bitcoin-int-tests/Dockerfile.net-tests .
-
-  # rustfmt checking
-  rustfmt:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Run rustfmt check
-        env:
-          DOCKER_BUILDKIT: 1
-        run: docker build -f ./.github/actions/bitcoin-int-tests/Dockerfile.rustfmt .
+  # # rustfmt checking
+  # rustfmt:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - name: Run rustfmt check
+  #       env:
+  #         DOCKER_BUILDKIT: 1
+  #       run: docker build -f ./.github/actions/bitcoin-int-tests/Dockerfile.rustfmt .
 
   # Create distributions
   dist:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        platform: [ windows-x64, macos-x64, macos-arm64, linux-x64, linux-musl-x64, linux-armv7, linux-arm64 ]
+        platform: [ linux-arm64 ]
 
     steps:
       - uses: actions/checkout@v2
@@ -106,24 +70,24 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
 
-      - name: Build distributable
-        uses: docker/build-push-action@v2.2.1
-        with:
-          file: build-scripts/Dockerfile.${{ matrix.platform }}
-          outputs: dist/${{ matrix.platform }}
-          build-args: |
-            STACKS_NODE_VERSION=${{ env.GITHUB_SHA_SHORT }}
-            GIT_BRANCH=${{ env.GITHUB_REF_SHORT }}
-            GIT_COMMIT=${{ env.GITHUB_SHA_SHORT }}
+      # - name: Build distributable
+      #   uses: docker/build-push-action@v2.2.1
+      #   with:
+      #     file: build-scripts/Dockerfile.${{ matrix.platform }}
+      #     outputs: dist/${{ matrix.platform }}
+      #     build-args: |
+      #       STACKS_NODE_VERSION=${{ env.GITHUB_SHA_SHORT }}
+      #       GIT_BRANCH=${{ env.GITHUB_REF_SHORT }}
+      #       GIT_COMMIT=${{ env.GITHUB_SHA_SHORT }}
           
-      - name: Compress artifact
-        run: zip --junk-paths ${{ matrix.platform }} ./dist/${{ matrix.platform }}/*
+      # - name: Compress artifact
+      #   run: zip --junk-paths ${{ matrix.platform }} ./dist/${{ matrix.platform }}/*
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v2
-        with:
-          name: ${{ matrix.platform }}
-          path: ${{ matrix.platform }}.zip
+      # - name: Upload artifact
+      #   uses: actions/upload-artifact@v2
+      #   with:
+      #     name: ${{ matrix.platform }}
+      #     path: ${{ matrix.platform }}.zip
 
 
       - name: Semantic Release
@@ -146,6 +110,13 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
 
+      - name: Login to Oracle CR
+        uses: docker/login-action@v1 
+        with:
+          registry: phx.ocir.io
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
       - name: Docker Meta
         id: meta
         uses: docker/metadata-action@v3
@@ -158,16 +129,11 @@ jobs:
             type=semver,pattern={{version}},value=${{ steps.semantic.outputs.new_release_version }},enable=${{ steps.semantic.outputs.new_release_version != '' }}
             type=semver,pattern={{major}}.{{minor}},value=${{ steps.semantic.outputs.new_release_version }},enable=${{ steps.semantic.outputs.new_release_version != '' }}
 
-      - name: Login to Oracle CR
-        uses: docker/login-action@v1 
-        with:
-          registry: phx.ocir.io
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_TOKEN }}
           
       - name: Build/Tag/Push Image
-        uses: docker/build-push-action@v2
+        uses: docker/build-push-action@v2.2.1
         with:
+          file: build-scripts/Dockerfile.${{ matrix.platform }}
           context: .
           build-args: STACKS_NODE_VERSION=${{ env.GITHUB_SHA_SHORT }},GIT_BRANCH=${{ env.GITHUB_REF_SHORT }},GIT_COMMIT=${{ env.GITHUB_SHA_SHORT }}
           tags: ${{ steps.meta.outputs.tags }}
