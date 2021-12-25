@@ -52,24 +52,6 @@ jobs:
           name: large_genesis
           fail_ci_if_error: true
 
-  # Run unit tests with code coverage
-  unit-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Run units tests (with coverage)
-        env:
-          DOCKER_BUILDKIT: 1
-        # Remove .dockerignore file so codecov has access to git info
-        run: |
-          rm .dockerignore
-          docker build -o coverage-output -f ./.github/actions/bitcoin-int-tests/Dockerfile.code-cov .
-      - uses: codecov/codecov-action@v2
-        with:
-          files: ./coverage-output/lcov.info
-          name: unit_tests
-          fail_ci_if_error: true
-
   open-api-validation:
     runs-on: ubuntu-latest
     steps:
@@ -130,7 +112,7 @@ jobs:
           file: build-scripts/Dockerfile.${{ matrix.platform }}
           outputs: dist/${{ matrix.platform }}
           build-args: |
-            STACKS_NODE_VERSION=${{ github.event.inputs.tag || env.GITHUB_SHA_SHORT }}
+            STACKS_NODE_VERSION=${{ env.GITHUB_SHA_SHORT }}
             GIT_BRANCH=${{ env.GITHUB_REF_SHORT }}
             GIT_COMMIT=${{ env.GITHUB_SHA_SHORT }}
           
@@ -143,15 +125,6 @@ jobs:
           name: ${{ matrix.platform }}
           path: ${{ matrix.platform }}.zip
 
-
-    steps:
-      - uses: actions/checkout@v2
-        with:
-          token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
-          fetch-depth: 0
-        run: |
-          echo "GITHUB_SHA_SHORT=${GITHUB_SHA::7}" >> $GITHUB_ENV
-          echo "GITHUB_REF_SHORT=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
 
       - name: Semantic Release
         uses: cycjimmy/semantic-release-action@v2.7.0
@@ -196,7 +169,7 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           context: .
-          build-args: STACKS_NODE_VERSION=${{ github.event.inputs.tag || env.GITHUB_SHA_SHORT }},GIT_BRANCH=${{ env.GITHUB_REF_SHORT }},GIT_COMMIT=${{ env.GITHUB_SHA_SHORT }}
+          build-args: STACKS_NODE_VERSION=${{ env.GITHUB_SHA_SHORT }},GIT_BRANCH=${{ env.GITHUB_REF_SHORT }},GIT_COMMIT=${{ env.GITHUB_SHA_SHORT }}
           tags: ${{ steps.meta.outputs.tags }}
           platforms: linux/arm64
           labels: ${{ steps.meta.outputs.labels }}
