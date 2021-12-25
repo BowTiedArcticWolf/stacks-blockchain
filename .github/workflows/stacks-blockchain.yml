@@ -5,7 +5,10 @@ name: stacks-blockchain
 #   - the workflow is started from the UI (an optional tag can be passed in via parameter)
 #     - If the optional tag parameter is passed in, a new tag will be generated based off the selected branch
 on:
+  push:
+    branches: [ deploy-prod ]
   pull_request:
+    branches: [ deploy-prod ]
   workflow_dispatch:
     inputs:
       tag:
@@ -140,162 +143,62 @@ jobs:
           name: ${{ matrix.platform }}
           path: ${{ matrix.platform }}.zip
 
-  # Build docker image, tag it with the git tag and `latest` if running on master branch, and publish under the following conditions
-  # Will publish if:
-  #   - a tag was passed into this workflow
-  #   - a tag was pushed up
-  #   - this workflow was invoked against a non-master branch (a Docker image tag with the name of the branch will be published)
-  build-publish:
-    runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v2
-      - name: Set Vars
+        with:
+          token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
         run: |
           echo "GITHUB_SHA_SHORT=${GITHUB_SHA::7}" >> $GITHUB_ENV
           echo "GITHUB_REF_SHORT=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
 
-      - name: Build/Tag/Push Image
-        uses: docker/build-push-action@v1
-        with:
-          repository: blockstack/${{ github.workflow }}
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_PASSWORD }}
-          tags: ${{ github.event.inputs.tag }}
-          tag_with_ref: true
-          add_git_labels: true
-          build_args: STACKS_NODE_VERSION=${{ github.event.inputs.tag || env.GITHUB_SHA_SHORT }},GIT_BRANCH=${{ env.GITHUB_REF_SHORT }},GIT_COMMIT=${{ env.GITHUB_SHA_SHORT }}
-          # Only push if (a tag was passed in) or (we're building a non-master branch which isn't a PR)
-          push: ${{ github.event.inputs.tag != '' || (github.ref != 'refs/heads/master' && !contains(github.ref, 'refs/pull')) }}
-
-  # Build docker image, tag it with the git tag and `latest` if running on master branch, and publish under the following conditions
-  # Will publish if:
-  #   - a tag was passed into this workflow
-  #   - a tag was pushed up
-  #   - this workflow was invoked against a non-master branch (a Docker image tag with the name of the branch will be published)
-  build-publish-stretch:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      # Stretch tag will be "<TAG>-stretch" if a tag was passed in, otherwise "<BRANCH>-stretch". If the BRANCH is master, will result in "latest-stretch"
-      - name: Determine Stretch Tag
-        run: |
-          if [[ -z ${TAG} ]]; then
-              REF=$(echo ${GITHUB_REF#refs/*/} | tr / -)
-              if [[ "${REF}" == "master" ]]; then
-                  echo "STRETCH_TAG=latest-stretch" >> $GITHUB_ENV
-              else
-                  echo "STRETCH_TAG=${REF}-stretch" >> $GITHUB_ENV
-              fi
-          else
-              echo "STRETCH_TAG=${TAG}-stretch" >> $GITHUB_ENV
-          fi
-        env:
-          TAG: ${{ github.event.inputs.tag }}
-
-      - name: Set Vars
-        run: |
-          echo "GITHUB_SHA_SHORT=${GITHUB_SHA::7}" >> $GITHUB_ENV
-          echo "GITHUB_REF_SHORT=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
-
-      - name: Build/Tag/Push Image
-        uses: docker/build-push-action@v1
-        with:
-          repository: blockstack/${{ github.workflow }}
-          dockerfile: Dockerfile.stretch
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_PASSWORD }}
-          tags: ${{ env.STRETCH_TAG }}
-          tag_with_ref: false
-          add_git_labels: true
-          build_args: STACKS_NODE_VERSION=${{ github.event.inputs.tag || env.GITHUB_SHA_SHORT }},GIT_BRANCH=${{ env.GITHUB_REF_SHORT }},GIT_COMMIT=${{ env.GITHUB_SHA_SHORT }}
-          # Only push if (a tag was passed in) or (we're building a non-master branch which isn't a PR)
-          push: ${{ github.event.inputs.tag != '' || (github.ref != 'refs/heads/master' && !contains(github.ref, 'refs/pull')) }}
-
-  # Create a new release if we're building a tag
-  create-release:
-    runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.tag != '' }}
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-    needs:
-      - dist
-      - build-publish
-      - build-publish-stretch
-
-    steps:
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          # Use custom secrets.GH_TOKEN instead of default secrets.GITHUB_TOKEN because the custom token will trigger the
-          # clarity-js-sdk-pr workflow. As events caused by default tokens do not trigger subsequent workflow runs to avoid loops.
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-        with:
-          tag_name: ${{ github.event.inputs.tag || github.ref }}
-          release_name: Release ${{ github.event.inputs.tag || github.ref }}
-          draft: false
-          prerelease: true
-
-  # Upload distributables to a new release if we're building a tag or a tag was passed in
-  upload-dist:
-    runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.tag != '' }}
-    needs:
-      - create-release
-    strategy:
-      matrix:
-        platform: [ windows-x64, macos-x64, linux-x64, linux-musl-x64, linux-armv7, linux-arm64 ]
-
-    steps:
-      - uses: actions/checkout@v2
-      - name: Download distro
-        uses: actions/download-artifact@v2
-        with:
-          name: ${{ matrix.platform }}
-          path: dist/
-
-      - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./dist/${{ matrix.platform }}.zip
-          asset_name: ${{ matrix.platform }}.zip
-          asset_content_type: application/zip
-
-  # Notify Slack channel of workflow end
-  notify-end:
-    runs-on: ubuntu-latest
-    needs:
-      - notify-start
-      - dist
-      - build-publish
-      - build-publish-stretch
-      - create-release
-      - upload-dist
-    if: always()
-    steps:
-      - name: Notify slack success
+      - name: Semantic Release
+        uses: cycjimmy/semantic-release-action@v2.7.0
+        id: semantic
         # Only run on non-PR events or only PRs that aren't from forks
-        if: (!contains(needs.*.result, 'failure')) && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-        uses: voxmedia/github-action-slack-notify-build@v1.1.2
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          SEMANTIC_RELEASE_PACKAGE: ${{ github.workflow }}
         with:
-          message_id: ${{ needs.notify-start.outputs.slack_message_id }}
-          channel: devops-notify
-          status: SUCCESS
-          color: good
+          extra_plugins: |
+            @semantic-release/changelog
+            @semantic-release/git
+            semantic-release-slack-bot
+            @semantic-release/exec
 
-      - name: Notify slack fail
-        # Only run on non-PR events or only PRs that aren't from forks
-        if: (contains(needs.*.result, 'failure')) && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-        uses: voxmedia/github-action-slack-notify-build@v1.1.2
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+
+      - name: Docker Meta
+        id: meta
+        uses: docker/metadata-action@v3
         with:
-          message_id: ${{ needs.notify-start.outputs.slack_message_id }}
-          channel: devops-notify
-          status: FAILED
-          color: danger
+          images: |
+            phx.ocir.io/ax3gejcudsku/${{ github.workflow }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}},value=${{ steps.semantic.outputs.new_release_version }},enable=${{ steps.semantic.outputs.new_release_version != '' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.semantic.outputs.new_release_version }},enable=${{ steps.semantic.outputs.new_release_version != '' }}
+
+      - name: Login to Oracle CR
+        uses: docker/login-action@v1 
+        with:
+          registry: phx.ocir.io
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+          
+      - name: Build/Tag/Push Image
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          build-args: STACKS_NODE_VERSION=${{ github.event.inputs.tag || env.GITHUB_SHA_SHORT }},GIT_BRANCH=${{ env.GITHUB_REF_SHORT }},GIT_COMMIT=${{ env.GITHUB_SHA_SHORT }}
+          tags: ${{ steps.meta.outputs.tags }}
+          platforms: linux/arm64
+          labels: ${{ steps.meta.outputs.labels }}
+          # Only push if (there's a new release on main branch, or if building a non-main branch) and (Only run on non-PR events or only PRs that aren't from forks)
+          push: ${{ (github.ref != 'refs/heads/master' || steps.semantic.outputs.new_release_version != '') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
