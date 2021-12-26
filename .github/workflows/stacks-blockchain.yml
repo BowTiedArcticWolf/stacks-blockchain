@@ -16,42 +16,42 @@ on:
         required: false
 
 jobs:
-  # open-api-validation:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v2
-  #     - name: Run units tests (with coverage)
-  #       env:
-  #         DOCKER_BUILDKIT: 1
-  #       run: docker build -o dist/ -f .github/actions/open-api/Dockerfile.open-api-validate .
-  #     - name: Upload bundled html
-  #       uses: actions/upload-artifact@v2
-  #       with:
-  #         name: open-api-bundle
-  #         path: |
-  #           dist
-  # # Run net-tests
-  # nettest:
-  #   # disable this job/test for now, since we haven't seen this pass
-  #   #  on github actions in a while, and the failures can take > 4 hours
-  #   if: ${{ false }}
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v2
-  #     - name: Run network relay tests
-  #       env:
-  #         DOCKER_BUILDKIT: 1
-  #       run: docker build -f ./.github/actions/bitcoin-int-tests/Dockerfile.net-tests .
+  open-api-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Run units tests (with coverage)
+        env:
+          DOCKER_BUILDKIT: 1
+        run: docker build -o dist/ -f .github/actions/open-api/Dockerfile.open-api-validate .
+      - name: Upload bundled html
+        uses: actions/upload-artifact@v2
+        with:
+          name: open-api-bundle
+          path: |
+            dist
+  # Run net-tests
+  nettest:
+    # disable this job/test for now, since we haven't seen this pass
+    #  on github actions in a while, and the failures can take > 4 hours
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Run network relay tests
+        env:
+          DOCKER_BUILDKIT: 1
+        run: docker build -f ./.github/actions/bitcoin-int-tests/Dockerfile.net-tests .
 
-  # # rustfmt checking
-  # rustfmt:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v2
-  #     - name: Run rustfmt check
-  #       env:
-  #         DOCKER_BUILDKIT: 1
-  #       run: docker build -f ./.github/actions/bitcoin-int-tests/Dockerfile.rustfmt .
+  # rustfmt checking
+  rustfmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Run rustfmt check
+        env:
+          DOCKER_BUILDKIT: 1
+        run: docker build -f ./.github/actions/bitcoin-int-tests/Dockerfile.rustfmt .
 
   # Create distributions
   dist:
@@ -69,26 +69,6 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
-
-      # - name: Build distributable
-      #   uses: docker/build-push-action@v2.2.1
-      #   with:
-      #     file: build-scripts/Dockerfile.${{ matrix.platform }}
-      #     outputs: dist/${{ matrix.platform }}
-      #     build-args: |
-      #       STACKS_NODE_VERSION=${{ env.GITHUB_SHA_SHORT }}
-      #       GIT_BRANCH=${{ env.GITHUB_REF_SHORT }}
-      #       GIT_COMMIT=${{ env.GITHUB_SHA_SHORT }}
-          
-      # - name: Compress artifact
-      #   run: zip --junk-paths ${{ matrix.platform }} ./dist/${{ matrix.platform }}/*
-
-      # - name: Upload artifact
-      #   uses: actions/upload-artifact@v2
-      #   with:
-      #     name: ${{ matrix.platform }}
-      #     path: ${{ matrix.platform }}.zip
-
 
       - name: Semantic Release
         uses: cycjimmy/semantic-release-action@v2.7.0
