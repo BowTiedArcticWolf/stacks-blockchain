@@ -15,6 +15,11 @@ on:
         description: 'The tag to create (optional)'
         required: false
 
+concurrency:
+  group: stacks-blockchain-${{ github.ref }}
+  # Only cancel in progress if this is for a PR
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   open-api-validation:
     runs-on: ubuntu-latest
@@ -79,11 +84,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
           SEMANTIC_RELEASE_PACKAGE: ${{ github.workflow }}
         with:
-          extra_plugins: |
-            @semantic-release/changelog
-            @semantic-release/git
-            semantic-release-slack-bot
-            @semantic-release/exec
+          tag_name: ${{ github.event.inputs.tag || github.ref }}
+          release_name: Release ${{ github.event.inputs.tag || github.ref }}
+          draft: false
+          prerelease: true
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v1
