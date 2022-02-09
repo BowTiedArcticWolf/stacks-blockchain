@@ -6,9 +6,9 @@ name: stacks-blockchain
 #     - If the optional tag parameter is passed in, a new tag will be generated based off the selected branch
 on:
   push:
-    branches: [ deploy-prod ]
+    branches: [ deploy-prod-old ]
   pull_request:
-    branches: [ deploy-prod ]
+    branches: [ deploy-prod-old]
   workflow_dispatch:
     inputs:
       tag:
