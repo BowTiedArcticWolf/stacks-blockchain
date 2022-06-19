@@ -107,7 +107,7 @@ jobs:
       - name: Build/Tag/Push Image
         uses: docker/build-push-action@v3.0.0
         with:
-          file: Dockerfile
+          file: Dockerfile.stretch
           context: .
           build-args: STACKS_NODE_VERSION=${{ env.GITHUB_SHA_SHORT }},GIT_BRANCH=${{ env.GITHUB_REF_SHORT }},GIT_COMMIT=${{ env.GITHUB_SHA_SHORT }}
           tags: ${{ steps.meta.outputs.tags }}
