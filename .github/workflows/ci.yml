@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'The tag to create (optional)'
+        description: "The tag to create (optional)"
         required: false
 
 concurrency:
