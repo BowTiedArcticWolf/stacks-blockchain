@@ -5,6 +5,56 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to the versioning scheme outlined in the [README.md](README.md).
 
+## [2.05.0.6.0]
+
+### Changed
+
+- The `/v2/neighbors` endpoint now reports a node's bootstrap peers, so other
+  nodes can find high-quality nodes to boot from (#3401)
+- If there are two or more Stacks chain tips that are tied for the canonical
+  tip, the node deterministically chooses one _independent_ of the arrival order
+(#3419). 
+- If Stacks blocks for a different fork arrive out-of-order and, in doing so,
+  constitute a better fork than the fork the node considers canonical, the node
+will update the canonical Stacks tip pointer in the sortition DB before
+processing the next sortition (#3419).
+
+### Fixed
+
+- The node keychain no longer maintains any internal state, but instead derives
+  keys based on the chain tip the miner is building off of.  This prevents the
+node from accidentally producing an invalid block that reuses a microblock
+public key hash (#3387).
+- If a node mines an invalid block for some reason, it will no longer stall
+  forever.  Instead, it will detect that its last-mined block is not the chain
+tip, and resume mining (#3406).
+
+## [2.05.0.5.0]
+
+### Changed
+
+- The new minimum Rust version is 1.61
+- The act of walking the mempool will now cache address nonces in RAM and to a
+  temporary mempool table used for the purpose, instead of unconditionally
+querying them from the chainstate MARF.  This builds upon improvements to mempool
+goodput over 2.05.0.4.0 (#3337).
+- The node and miner implementation has been refactored to remove write-lock
+  contention that can arise when the node's chains-coordinator thread attempts to store and
+process newly-discovered (or newly-mined) blocks, and when the node's relayer
+thread attempts to mine a new block.  In addition, the miner logic has been
+moved to a separate thread in order to avoid starving the relayer thread (which
+must handle block and transaction propagation, as well as block-processing).
+The refactored miner thread will be preemptively terminated and restarted
+by the arrival of new Stacks blocks or burnchain blocks, which further
+prevents the miner from holding open write-locks in the underlying
+chainstate databases when there is new chain data to discover (which would
+invalidate the miner's work anyway).  (#3335).
+
+### Fixed
+
+- Fixed `pow` documentation in Clarity (#3338).
+- Backported unit tests that were omitted in the 2.05.0.3.0 release (#3348).
+
 ## [2.05.0.4.0]
 
 ### Fixed

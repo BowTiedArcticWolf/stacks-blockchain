@@ -131,7 +131,7 @@ pub const STREAM_CHUNK_SIZE: u64 = 4096;
 
 #[derive(Default)]
 pub struct RPCHandlerArgs<'a> {
-    pub exit_at_block_height: Option<&'a u64>,
+    pub exit_at_block_height: Option<u64>,
     pub genesis_chainstate_hash: Sha256Sum,
     pub event_observer: Option<&'a dyn MemPoolEventDispatcher>,
     pub cost_estimator: Option<&'a dyn CostEstimator>,
@@ -207,7 +207,7 @@ impl RPCPeerInfoData {
     pub fn from_network(
         network: &PeerNetwork,
         chainstate: &StacksChainState,
-        exit_at_block_height: &Option<&u64>,
+        exit_at_block_height: Option<u64>,
         genesis_chainstate_hash: &Sha256Sum,
     ) -> RPCPeerInfoData {
         let server_version = version_string(
@@ -251,7 +251,7 @@ impl RPCPeerInfoData {
                 .clone(),
             unanchored_tip: unconfirmed_tip,
             unanchored_seq: unconfirmed_seq,
-            exit_at_block_height: exit_at_block_height.cloned(),
+            exit_at_block_height: exit_at_block_height,
             genesis_chainstate_hash: genesis_chainstate_hash.clone(),
             node_public_key: Some(public_key_buf),
             node_public_key_hash: Some(public_key_hash),
@@ -444,6 +444,19 @@ impl RPCNeighborsInfo {
         chain_view: &BurnchainView,
         peerdb: &PeerDB,
     ) -> Result<RPCNeighborsInfo, net_error> {
+        let bootstrap_nodes =
+            PeerDB::get_bootstrap_peers(peerdb.conn(), network_id).map_err(net_error::DBError)?;
+        let bootstrap = bootstrap_nodes
+            .into_iter()
+            .map(|n| {
+                RPCNeighbor::from_neighbor_key_and_pubkh(
+                    n.addr.clone(),
+                    Hash160::from_node_public_key(&n.public_key),
+                    true,
+                )
+            })
+            .collect();
+
         let neighbor_sample = PeerDB::get_random_neighbors(
             peerdb.conn(),
             network_id,
@@ -486,9 +499,10 @@ impl RPCNeighborsInfo {
         }
 
         Ok(RPCNeighborsInfo {
-            sample: sample,
-            inbound: inbound,
-            outbound: outbound,
+            bootstrap,
+            sample,
+            inbound,
+            outbound,
         })
     }
 }
@@ -636,7 +650,7 @@ impl ConversationHttp {
         let pi = RPCPeerInfoData::from_network(
             network,
             chainstate,
-            &handler_args.exit_at_block_height,
+            handler_args.exit_at_block_height.clone(),
             &handler_args.genesis_chainstate_hash,
         );
         let response = HttpResponseType::PeerInfo(response_metadata, pi);
@@ -4088,7 +4102,7 @@ mod test {
                 let peer_info = RPCPeerInfoData::from_network(
                     &peer_server.network,
                     &peer_server.stacks_node.as_ref().unwrap().chainstate,
-                    &None,
+                    None,
                     &Sha256Sum::zero(),
                 );
 
@@ -4275,6 +4289,11 @@ mod test {
                     HttpResponseType::Neighbors(response_md, neighbor_info) => {
                         assert_eq!(neighbor_info.sample.len(), 1);
                         assert_eq!(neighbor_info.sample[0].port, peer_client.config.server_port); // we see ourselves as the neighbor
+                        assert_eq!(neighbor_info.bootstrap.len(), 1);
+                        assert_eq!(
+                            neighbor_info.bootstrap[0].port,
+                            peer_client.config.server_port
+                        ); // we see ourselves as the bootstrap
                         true
                     }
                     _ => {

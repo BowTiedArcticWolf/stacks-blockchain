@@ -19,6 +19,8 @@ use std::convert::{TryFrom, TryInto};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::mpsc::SyncSender;
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use crate::burnchains::{
@@ -39,6 +41,7 @@ use crate::chainstate::stacks::{
         StacksHeaderInfo,
     },
     events::{StacksTransactionEvent, StacksTransactionReceipt, TransactionOrigin},
+    miner::{signal_mining_blocked, signal_mining_ready, MinerStatus},
     Error as ChainstateError, StacksBlock, TransactionPayload,
 };
 use crate::core::StacksEpoch;
@@ -272,6 +275,7 @@ impl<'a, T: BlockEventDispatcher, CE: CostEstimator + ?Sized, FE: FeeEstimator +
         atlas_config: AtlasConfig,
         cost_estimator: Option<&mut CE>,
         fee_estimator: Option<&mut FE>,
+        miner_status: Arc<Mutex<MinerStatus>>,
     ) where
         T: BlockEventDispatcher,
     {
@@ -311,18 +315,23 @@ impl<'a, T: BlockEventDispatcher, CE: CostEstimator + ?Sized, FE: FeeEstimator +
             // timeout so that we handle Ctrl-C a little gracefully
             match comms.wait_on() {
                 CoordinatorEvents::NEW_STACKS_BLOCK => {
+                    signal_mining_blocked(miner_status.clone());
                     debug!("Received new stacks block notice");
                     if let Err(e) = inst.handle_new_stacks_block() {
                         warn!("Error processing new stacks block: {:?}", e);
                     }
+                    signal_mining_ready(miner_status.clone());
                 }
                 CoordinatorEvents::NEW_BURN_BLOCK => {
+                    signal_mining_blocked(miner_status.clone());
                     debug!("Received new burn block notice");
                     if let Err(e) = inst.handle_new_burnchain_block() {
                         warn!("Error processing new burn block: {:?}", e);
                     }
+                    signal_mining_ready(miner_status.clone());
                 }
                 CoordinatorEvents::STOP => {
+                    signal_mining_blocked(miner_status.clone());
                     debug!("Received stop notice");
                     return;
                 }
@@ -709,7 +718,12 @@ impl<
                 .process_blocks(sortdb_handle, 1, self.dispatcher)?;
 
         while let Some(block_result) = processed_blocks.pop() {
-            if let (Some(block_receipt), _) = block_result {
+            if block_result.0.is_none() && block_result.1.is_none() {
+                // this block was invalid
+                debug!("Bump blocks processed (invalid)");
+                self.notifier.notify_stacks_block_processed();
+                increment_stx_blocks_processed_counter();
+            } else if let (Some(block_receipt), _) = block_result {
                 // only bump the coordinator's state if the processed block
                 //   is in our sortition fork
                 //  TODO: we should update the staging block logic to prevent
@@ -730,6 +744,7 @@ impl<
                     let new_canonical_stacks_block =
                         new_canonical_block_snapshot.get_canonical_stacks_block_id();
                     self.canonical_chain_tip = Some(new_canonical_stacks_block);
+
                     debug!("Bump blocks processed");
                     self.notifier.notify_stacks_block_processed();
                     increment_stx_blocks_processed_counter();

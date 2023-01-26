@@ -1,9 +1,10 @@
 [package]
 name = "stacks-node"
 version = "0.1.0"
-authors = ["Ludo Galabru <ludovic@blockstack.com>"]
+authors = ["Jude Nelson <jude@stacks.org>", "Aaron Blankstein <aaron@blockstack.com>", "Ludo Galabru <ludovic@blockstack.com>"]
 edition = "2021"
 resolver = "2"
+rust-version = "1.61" 
 
 [dependencies]
 lazy_static = "1.4.0"
@@ -24,6 +25,8 @@ libc = "0.2"
 slog = { version = "2.5.2", features = [ "max_level_trace" ] }
 clarity = { package = "clarity", path = "../../clarity/." }
 stacks_common = { package = "stacks-common", path = "../../stacks-common/." }
+chrono = "0.4.19"
+regex = "1"
 
 [dev-dependencies]
 ring = "0.16.19"
@@ -41,6 +44,10 @@ features = ["blob", "serde_json", "i128_blob", "bundled", "trace"]
 [[bin]]
 name = "stacks-node"
 path = "src/main.rs"
+
+[[bin]]
+name = "stacks-events"
+path = "src/stacks_events.rs"
 
 [features]
 monitoring_prom = ["stacks/monitoring_prom"]
